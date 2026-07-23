@@ -4,11 +4,12 @@
   /*
    * Exact WebGL port of the supplied C++ predicate rasterizer.
    *
-   * The GPU renders the same 64x32 logical HUB75 framebuffer as the C++ code,
-   * including renderFrame()'s outer 2x2 supersampling, rast()'s independent
-   * 1x1/2x2/3x3 predicate coverage, coverage falloff, component order, and
-   * final 8-bit rounding. Blink and pupil motion remain CPU-side because the
-   * C++ implementation stores them as persistent static state and advances one
+   * The GPU renders the same logical HUB75 framebuffer as the C++ code. Its
+   * default size is 64x32 and can be overridden with the width query parameter.
+   * This includes renderFrame()'s outer 2x2 supersampling, rast()'s independent
+   * 1x1/2x2/3x3 predicate coverage, coverage falloff, component order, and final
+   * 8-bit rounding. Blink and pupil motion remain CPU-side because the C++
+   * implementation stores them as persistent static state and advances one
    * shared deterministic xorshift32 sequence.
    */
 
@@ -24,13 +25,33 @@
   const leftKnob = document.getElementById('leftKnob');
   const rightKnob = document.getElementById('rightKnob');
 
-  const MATRIX_WIDTH = 64;
-  const MATRIX_HEIGHT = 32;
+  const queryParameters = new URLSearchParams(window.location.search);
+  const SHOW_HUD = queryParameters.get('hud') === '1';
+  const requestedWidth = queryParameters.get('width');
+  const parsedWidth =
+    requestedWidth !== null && /^\d+$/.test(requestedWidth)
+      ? Number(requestedWidth)
+      : Number.NaN;
+  const MATRIX_WIDTH =
+    Number.isInteger(parsedWidth) &&
+    parsedWidth >= 16 &&
+    parsedWidth <= 1024 &&
+    parsedWidth % 2 === 0
+      ? parsedWidth
+      : 64;
+  const MATRIX_HEIGHT = MATRIX_WIDTH / 2;
   const WORLD_WIDTH = 3.0;
   const WORLD_HEIGHT = 1.5;
   const PIXEL_WIDTH = WORLD_WIDTH / MATRIX_WIDTH;
   const PIXEL_HEIGHT = WORLD_HEIGHT / MATRIX_HEIGHT;
   const CONTROLLER_DEADZONE = 0.15;
+
+  document.documentElement.classList.toggle('hide-hud', !SHOW_HUD);
+
+  const hudElements = document.querySelectorAll('.hud, .pad-stack');
+  for (const element of hudElements) {
+    element.setAttribute('aria-hidden', String(!SHOW_HUD));
+  }
 
   const parsedAntialiasingLevel = Number.parseInt(
     canvas.dataset.antialiasingLevel || '1',

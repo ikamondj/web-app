@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="hide-hud">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -16,7 +16,7 @@
     <div class="app-shell">
       <canvas id="glcanvas" aria-label="Song of the Night WebGL scene"></canvas>
 
-      <div class="hud">
+      <div class="hud" aria-hidden="true">
         <div class="hud-card">
           <strong>Song of the Night</strong>
           <span>Installable PWA • WebGL • Gamepad + touch</span>
@@ -27,12 +27,12 @@
         </div>
       </div>
 
-      <div class="pad-stack">
+      <div class="pad-stack" aria-hidden="true">
         <div class="joystick" id="leftJoy">
           <div class="joystick-knob" id="leftKnob"></div>
         </div>
         <div class="joystick" id="rightJoy">
-          <div class="joystick-knob" id="rightKnob"></div>
+          <div class="joystick-knob" id="rightKnob" opacity=0></div>
         </div>
       </div>
     </div>
