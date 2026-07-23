@@ -46,6 +46,8 @@
   const PIXEL_HEIGHT = WORLD_HEIGHT / MATRIX_HEIGHT;
   const CONTROLLER_DEADZONE = 0.15;
 
+  canvas.dataset.rendererWidth = String(MATRIX_WIDTH);
+  canvas.dataset.rendererHeight = String(MATRIX_HEIGHT);
   document.documentElement.classList.toggle('hide-hud', !SHOW_HUD);
 
   const hudElements = document.querySelectorAll('.hud, .pad-stack');
