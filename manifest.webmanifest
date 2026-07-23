@@ -1,0 +1,20 @@
+{
+  "name": "Song of the Night",
+  "short_name": "SONG",
+  "description": "A progressive web app recreation of the Song of the Night animated face using WebGL and browser gamepad input.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#05040b",
+  "theme_color": "#05040b",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
