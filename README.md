@@ -7,12 +7,16 @@ This directory contains a standalone progressive web app version of the song-of-
 From this folder:
 
 ```powershell
-python -m http.server 8080
+node server.js
 ```
 
 Then browse to:
 
-- http://localhost:8080
+- http://127.0.0.1:8080/
+- http://127.0.0.1:8080/?width=16
+- http://127.0.0.1:8080/?hud=1&width=128
+
+The local server disables caching and handles URL query parameters correctly.
 
 ## Install on iPhone
 

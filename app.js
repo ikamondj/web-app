@@ -52,6 +52,7 @@
 
   const hudElements = document.querySelectorAll('.hud, .pad-stack');
   for (const element of hudElements) {
+    element.hidden = !SHOW_HUD;
     element.setAttribute('aria-hidden', String(!SHOW_HUD));
   }
 
@@ -2966,62 +2967,12 @@ void main() {
   }
 
   function resizeCanvas() {
-    const devicePixelRatio =
-      Math.min(
-        window.devicePixelRatio || 1,
-        3,
-      );
-
-    const displayWidth =
-      Math.max(
-        1,
-        Math.round(
-          canvas.clientWidth *
-          devicePixelRatio,
-        ),
-      );
-
-    const displayHeight =
-      Math.max(
-        1,
-        Math.round(
-          canvas.clientHeight *
-          devicePixelRatio,
-        ),
-      );
-
-    // Fall back to the window size when CSS has not assigned the canvas a size.
-    const width =
-      canvas.clientWidth > 0
-        ? displayWidth
-        : Math.max(
-            1,
-            Math.round(
-              window.innerWidth *
-              devicePixelRatio,
-            ),
-          );
-
-    const height =
-      canvas.clientHeight > 0
-        ? displayHeight
-        : Math.max(
-            1,
-            Math.round(
-              window.innerHeight *
-              devicePixelRatio,
-            ),
-          );
-
     if (
-      canvas.width !== width ||
-      canvas.height !== height
+      canvas.width !== MATRIX_WIDTH ||
+      canvas.height !== MATRIX_HEIGHT
     ) {
-      canvas.width =
-        width;
-
-      canvas.height =
-        height;
+      canvas.width = MATRIX_WIDTH;
+      canvas.height = MATRIX_HEIGHT;
     }
   }
 
