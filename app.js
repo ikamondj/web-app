@@ -39,7 +39,7 @@
     parsedWidth <= 1024 &&
     parsedWidth % 2 === 0
       ? parsedWidth
-      : 64;
+      : 128;
   const MATRIX_HEIGHT = MATRIX_WIDTH / 2;
   const WORLD_WIDTH = 3.0;
   const WORLD_HEIGHT = 1.5;
