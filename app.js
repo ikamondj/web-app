@@ -27,6 +27,7 @@
 
   const queryParameters = new URLSearchParams(window.location.search);
   const SHOW_HUD = queryParameters.get('hud') === '1';
+  const CAMERA_REQUESTED = queryParameters.get('camera') === '1';
   const requestedWidth = queryParameters.get('width');
   const parsedWidth =
     requestedWidth !== null && /^\d+$/.test(requestedWidth)
@@ -45,6 +46,24 @@
   const PIXEL_WIDTH = WORLD_WIDTH / MATRIX_WIDTH;
   const PIXEL_HEIGHT = WORLD_HEIGHT / MATRIX_HEIGHT;
   const CONTROLLER_DEADZONE = 0.15;
+  const IS_MOBILE_DEVICE =
+    navigator.userAgentData?.mobile === true ||
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+    (
+      navigator.maxTouchPoints > 1 &&
+      /Macintosh/i.test(navigator.userAgent)
+    );
+
+  const cameraTracking = {
+    active: false,
+    blink: 0,
+    gazeX: 0,
+    gazeY: 0.15,
+    stream: null,
+    video: null,
+    landmarker: null,
+    lastAnalysisTime: -Infinity,
+  };
 
   canvas.dataset.rendererWidth = String(MATRIX_WIDTH);
   canvas.dataset.rendererHeight = String(MATRIX_HEIGHT);
@@ -2567,6 +2586,17 @@ void main() {
         time;
     }
 
+    if (cameraTracking.active) {
+      return {
+        blink:
+          f32(cameraTracking.blink),
+        pupilGazeX:
+          f32(cameraTracking.gazeX),
+        pupilGazeY:
+          f32(cameraTracking.gazeY),
+      };
+    }
+
     return {
       blink,
       pupilGazeX:
@@ -2574,6 +2604,278 @@ void main() {
       pupilGazeY:
         animationState.pupilGazeY,
     };
+  }
+
+  function setCameraStatus(status, detail = '') {
+    document.documentElement.dataset.cameraStatus = status;
+
+    if (detail) {
+      console.warn(`Camera eye tracking: ${detail}`);
+    }
+  }
+
+  function stopCameraTracking() {
+    cameraTracking.active = false;
+
+    if (cameraTracking.stream) {
+      for (const track of cameraTracking.stream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    cameraTracking.landmarker?.close();
+    cameraTracking.video?.remove();
+    cameraTracking.stream = null;
+    cameraTracking.landmarker = null;
+    cameraTracking.video = null;
+  }
+
+  function blendshapeMap(result) {
+    const categories =
+      result.faceBlendshapes?.[0]?.categories;
+
+    if (!categories) {
+      return null;
+    }
+
+    return new Map(
+      categories.map((category) => [
+        category.categoryName,
+        category.score,
+      ]),
+    );
+  }
+
+  function updateCameraDrivenAnimation(shapes) {
+    const score = (name) =>
+      shapes.get(name) || 0;
+
+    const blinkTarget =
+      (
+        score('eyeBlinkLeft') +
+        score('eyeBlinkRight')
+      ) * 0.5;
+
+    const gazeLeft =
+      (
+        score('eyeLookOutLeft') +
+        score('eyeLookInRight')
+      ) * 0.5;
+
+    const gazeRight =
+      (
+        score('eyeLookInLeft') +
+        score('eyeLookOutRight')
+      ) * 0.5;
+
+    const gazeUp =
+      (
+        score('eyeLookUpLeft') +
+        score('eyeLookUpRight')
+      ) * 0.5;
+
+    const gazeDown =
+      (
+        score('eyeLookDownLeft') +
+        score('eyeLookDownRight')
+      ) * 0.5;
+
+    const gazeXTarget =
+      clamp(
+        (gazeRight - gazeLeft) * 0.16,
+        -0.10,
+        0.10,
+      );
+
+    const gazeYTarget =
+      clamp(
+        0.15 +
+        (gazeUp - gazeDown) * 0.22,
+        0,
+        0.30,
+      );
+
+    // A quick blink response and gentler gaze smoothing avoid visible jitter.
+    cameraTracking.blink =
+      lerpFloat(
+        cameraTracking.blink,
+        blinkTarget,
+        0.65,
+      );
+
+    cameraTracking.gazeX =
+      lerpFloat(
+        cameraTracking.gazeX,
+        gazeXTarget,
+        0.35,
+      );
+
+    cameraTracking.gazeY =
+      lerpFloat(
+        cameraTracking.gazeY,
+        gazeYTarget,
+        0.35,
+      );
+  }
+
+  async function createFaceLandmarker() {
+    const mediapipe =
+      await import(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm'
+      );
+
+    const vision =
+      await mediapipe.FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
+      );
+
+    const options = {
+      baseOptions: {
+        modelAssetPath:
+          'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: false,
+      minFaceDetectionConfidence: 0.55,
+      minFacePresenceConfidence: 0.55,
+      minTrackingConfidence: 0.55,
+    };
+
+    try {
+      return await mediapipe.FaceLandmarker.createFromOptions(
+        vision,
+        options,
+      );
+    } catch (gpuError) {
+      console.warn(
+        'Camera eye tracking: GPU delegate unavailable; using CPU.',
+        gpuError,
+      );
+
+      options.baseOptions.delegate = 'CPU';
+
+      return mediapipe.FaceLandmarker.createFromOptions(
+        vision,
+        options,
+      );
+    }
+  }
+
+  async function startCameraTracking() {
+    if (!CAMERA_REQUESTED) {
+      return;
+    }
+
+    if (!IS_MOBILE_DEVICE) {
+      setCameraStatus(
+        'not-mobile',
+        'camera=1 is enabled only on mobile devices.',
+      );
+      return;
+    }
+
+    if (
+      !window.isSecureContext ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setCameraStatus(
+        'unavailable',
+        'camera access requires HTTPS or a localhost secure context.',
+      );
+      return;
+    }
+
+    setCameraStatus('requesting');
+
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: {
+              exact: 'environment',
+            },
+            width: {
+              ideal: 320,
+              max: 320,
+            },
+            height: {
+              ideal: 240,
+              max: 240,
+            },
+            frameRate: {
+              ideal: 10,
+              max: 12,
+            },
+          },
+        });
+
+      const video =
+        document.createElement('video');
+
+      cameraTracking.stream = stream;
+      cameraTracking.video = video;
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      video.hidden = true;
+      video.srcObject = stream;
+      document.body.append(video);
+      await video.play();
+
+      cameraTracking.landmarker =
+        await createFaceLandmarker();
+      cameraTracking.active = true;
+      setCameraStatus('active');
+
+      const analyze = (timestamp) => {
+        if (
+          !cameraTracking.active ||
+          !cameraTracking.landmarker ||
+          !cameraTracking.video
+        ) {
+          return;
+        }
+
+        if (
+          !document.hidden &&
+          timestamp - cameraTracking.lastAnalysisTime >= 100 &&
+          cameraTracking.video.readyState >=
+            HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          cameraTracking.lastAnalysisTime = timestamp;
+
+          const result =
+            cameraTracking.landmarker.detectForVideo(
+              cameraTracking.video,
+              timestamp,
+            );
+
+          const shapes =
+            blendshapeMap(result);
+
+          if (shapes) {
+            updateCameraDrivenAnimation(shapes);
+            setCameraStatus('tracking');
+          } else {
+            setCameraStatus('no-face');
+          }
+        }
+
+        requestAnimationFrame(analyze);
+      };
+
+      requestAnimationFrame(analyze);
+    } catch (error) {
+      stopCameraTracking();
+      setCameraStatus(
+        'error',
+        `${error.name || 'Error'}: ${error.message || error}`,
+      );
+    }
   }
 
   function applyRadialDeadzone(
@@ -3282,6 +3584,24 @@ void main() {
     resizeCanvas,
   );
 
+  document.addEventListener(
+    'visibilitychange',
+    () => {
+      if (!cameraTracking.stream) {
+        return;
+      }
+
+      for (const track of cameraTracking.stream.getVideoTracks()) {
+        track.enabled = !document.hidden;
+      }
+    },
+  );
+
+  window.addEventListener(
+    'pagehide',
+    stopCameraTracking,
+  );
+
   if ('serviceWorker' in navigator) {
     window.addEventListener(
       'load',
@@ -3300,4 +3620,5 @@ void main() {
 
   resizeCanvas();
   requestAnimationFrame(animate);
+  startCameraTracking();
 })();
